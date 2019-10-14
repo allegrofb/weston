@@ -1099,7 +1099,7 @@ weston_choose_default_backend(void)
 
 	if (getenv("WAYLAND_DISPLAY") || getenv("WAYLAND_SOCKET"))
 		backend = strdup("wayland-backend.so");
-	else if (getenv("DISPLAY"))
+	else if (getenv("DISPLAY"))                         //hyjiang, virtualbox, DISPLAY=":0"
 		backend = strdup("x11-backend.so");
 	else
 		backend = strdup(WESTON_NATIVE_BACKEND);
@@ -3239,7 +3239,7 @@ wet_main(int argc, char *argv[])
 		weston_config_section_get_string(section, "backend", &backend,
 						 NULL);
 		if (!backend)
-			backend = weston_choose_default_backend();
+			backend = weston_choose_default_backend();      //hyjiang, virtualbox default backend x11-backend.so, including [ 'headless', 'fbdev', 'x11', 'wayland', 'drm' ] -backend.so
 	}
 
 	wet.compositor = weston_compositor_create(display, log_ctx, &wet);
