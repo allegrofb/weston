@@ -472,7 +472,7 @@ shell_configuration(struct desktop_shell *shell)
 	section = weston_config_get_section(wet_get_config(shell->compositor),
 					    "shell", NULL, NULL);
 	client = wet_get_libexec_path(WESTON_SHELL_CLIENT);
-	weston_config_section_get_string(section, "client", &s, client);
+	weston_config_section_get_string(section, "client", &s, client);  //hyjiang, get client, default weston-desktop-shell
 	free(client);
 	shell->client = s;
 

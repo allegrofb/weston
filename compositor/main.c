@@ -892,7 +892,7 @@ wet_load_module(struct weston_compositor *compositor,
 	int (*module_init)(struct weston_compositor *ec,
 			   int *argc, char *argv[]);
 
-	module_init = wet_load_module_entrypoint(name, "wet_module_init");
+	module_init = wet_load_module_entrypoint(name, "wet_module_init");  //hyjiang
 	if (!module_init)
 		return -1;
 	if (module_init(compositor, argc, argv) < 0)
@@ -907,7 +907,7 @@ wet_load_shell(struct weston_compositor *compositor,
 	int (*shell_init)(struct weston_compositor *ec,
 			  int *argc, char *argv[]);
 
-	shell_init = wet_load_module_entrypoint(name, "wet_shell_init");
+	shell_init = wet_load_module_entrypoint(name, "wet_shell_init");  //hyjiang
 	if (!shell_init)
 		return -1;
 	if (shell_init(compositor, argc, argv) < 0)
@@ -3315,14 +3315,14 @@ wet_main(int argc, char *argv[])
 	}
 
 	if (!shell)
-		weston_config_section_get_string(section, "shell", &shell,
+		weston_config_section_get_string(section, "shell", &shell,   //hyjiang, use default desktop-shell plugin implementation 
 						 "desktop-shell.so");
 
-	if (wet_load_shell(wet.compositor, shell, &argc, argv) < 0)
+	if (wet_load_shell(wet.compositor, shell, &argc, argv) < 0)       //hyjiang, load desktop-shell plugin so
 		goto out;
 
 	weston_config_section_get_string(section, "modules", &modules, "");
-	if (load_modules(wet.compositor, modules, &argc, argv, &xwayland) < 0)
+	if (load_modules(wet.compositor, modules, &argc, argv, &xwayland) < 0)   //hyjiang, load all three-party modules
 		goto out;
 
 	if (load_modules(wet.compositor, option_modules, &argc, argv, &xwayland) < 0)
