@@ -114,6 +114,9 @@ struct ss_shm_buffer {
 
 struct screen_share {
 	struct weston_compositor *compositor;
+	/* XXX: missing compositor destroy listener
+	 * https://gitlab.freedesktop.org/wayland/weston/issues/298
+	 */
 	char *command;
 };
 
@@ -548,8 +551,8 @@ output_compute_transform(struct weston_output *output,
 		break;
 	case WL_OUTPUT_TRANSFORM_90:
 	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
-		pixman_transform_rotate(transform, NULL, 0, pixman_fixed_1);
-		pixman_transform_translate(transform, NULL, fh, 0);
+		pixman_transform_rotate(transform, NULL, 0, -pixman_fixed_1);
+		pixman_transform_translate(transform, NULL, 0, fw);
 		break;
 	case WL_OUTPUT_TRANSFORM_180:
 	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
@@ -558,8 +561,8 @@ output_compute_transform(struct weston_output *output,
 		break;
 	case WL_OUTPUT_TRANSFORM_270:
 	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
-		pixman_transform_rotate(transform, NULL, 0, -pixman_fixed_1);
-		pixman_transform_translate(transform, NULL, 0, fw);
+		pixman_transform_rotate(transform, NULL, 0, pixman_fixed_1);
+		pixman_transform_translate(transform, NULL, fh, 0);
 		break;
 	}
 
@@ -816,6 +819,7 @@ shared_output_repainted(struct wl_listener *listener, void *data)
 	struct shared_output *so =
 		container_of(listener, struct shared_output, frame_listener);
 	pixman_region32_t damage;
+	pixman_region32_t *current_damage = data;
 	struct ss_shm_buffer *sb;
 	int32_t x, y, width, height, stride;
 	int i, nrects, do_yflip, y_orig;
@@ -844,8 +848,7 @@ shared_output_repainted(struct wl_listener *listener, void *data)
 	} else {
 		/* Damage in output coordinates */
 		pixman_region32_init(&damage);
-		pixman_region32_intersect(&damage, &so->output->region,
-					  &so->output->previous_damage);
+		pixman_region32_intersect(&damage, &so->output->region, current_damage);
 		pixman_region32_translate(&damage, -so->output->x, -so->output->y);
 	}
 

@@ -42,7 +42,6 @@
 #include <unistd.h>
 
 #include "linux-sync-file.h"
-
 #include "timeline.h"
 
 #include "gl-renderer.h"
@@ -139,11 +138,18 @@ struct yuv_plane_descriptor {
 	int plane_index;
 };
 
+enum texture_type {
+	TEXTURE_Y_XUXV_WL,
+	TEXTURE_Y_UV_WL,
+	TEXTURE_Y_U_V_WL,
+	TEXTURE_XYUV_WL
+};
+
 struct yuv_format_descriptor {
 	uint32_t format;
 	int input_planes;
 	int output_planes;
-	int texture_type;
+	enum texture_type texture_type;
 	struct yuv_plane_descriptor plane[4];
 };
 
@@ -172,6 +178,7 @@ struct gl_surface_state {
 	int pitch; /* in pixels */
 	int height; /* in pixels */
 	bool y_inverted;
+	bool direct_display;
 
 	/* Extension needed for SHM YUV texture */
 	int offset[3]; /* offset per plane */
@@ -201,8 +208,6 @@ struct timeline_render_point {
 	struct weston_output *output;
 	struct wl_event_source *event_source;
 };
-
-static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display = NULL;
 
 static inline const char *
 dump_format(uint32_t format, char out[4])
@@ -253,7 +258,7 @@ timeline_render_point_handler(int fd, uint32_t mask, void *data)
 
 		if (weston_linux_sync_file_read_timestamp(trp->fd,
 							  &tspec) == 0) {
-			TL_POINT(tp_name, TLP_GPU(&tspec),
+			TL_POINT(trp->output->compositor, tp_name, TLP_GPU(&tspec),
 				 TLP_OUTPUT(trp->output), TLP_END);
 		}
 	}
@@ -287,7 +292,7 @@ timeline_submit_render_sync(struct gl_renderer *gr,
 	int fd;
 	struct timeline_render_point *trp;
 
-	if (!weston_timeline_enabled_ ||
+	if (!weston_log_scope_is_enabled(ec->timeline) ||
 	    !gr->has_native_fence_sync ||
 	    sync == EGL_NO_SYNC_KHR)
 		return;
@@ -839,6 +844,15 @@ setup_censor_overrides(struct weston_output *output,
 	bool unprotected_censor =
 		(ev->surface->desired_protection > output->current_protection);
 
+	if (gs->direct_display) {
+		gs->color[0] = 0.40;
+		gs->color[1] = 0.0;
+		gs->color[2] = 0.0;
+		gs->color[3] = 1.0;
+		gs->shader = &gr->solid_shader;
+		return gs->shader;
+	}
+
 	/* When not in enforced mode, the client is notified of the protection */
 	/* change, so content censoring is not required */
 	if (ev->surface->protection_mode !=
@@ -877,7 +891,7 @@ draw_view(struct weston_view *ev, struct weston_output *output,
 	/* In case of a runtime switch of renderers, we may not have received
 	 * an attach for this surface since the switch. In that case we don't
 	 * have a valid buffer or a proper shader set up so skip rendering. */
-	if (!gs->shader)
+	if (!gs->shader && !gs->direct_display)
 		return;
 
 	pixman_region32_init(&repaint);
@@ -1457,8 +1471,7 @@ gl_renderer_repaint_output(struct weston_output *output,
 
 	draw_output_borders(output, border_status);
 
-	pixman_region32_copy(&output->previous_damage, output_damage);
-	wl_signal_emit(&output->frame_signal, output);
+	wl_signal_emit(&output->frame_signal, output_damage);
 
 	go->end_render_sync = create_render_sync(gr);
 
@@ -1805,6 +1818,7 @@ gl_renderer_attach_shm(struct weston_surface *es, struct weston_buffer *buffer,
 		gs->buffer_type = BUFFER_TYPE_SHM;
 		gs->needs_full_upload = true;
 		gs->y_inverted = true;
+		gs->direct_display = false;
 
 		gs->surface = es;
 
@@ -2015,12 +2029,16 @@ import_simple_dmabuf(struct gl_renderer *gr,
 #define DRM_FORMAT_GR88          fourcc_code('G', 'R', '8', '8') /* [15:0] G:R 8:8 little endian */
 #endif
 
+#ifndef DRM_FORMAT_XYUV8888
+#define DRM_FORMAT_XYUV8888      fourcc_code('X', 'Y', 'U', 'V') /* [31:0] X:Y:Cb:Cr 8:8:8:8 little endian */
+#endif
+
 struct yuv_format_descriptor yuv_formats[] = {
 	{
 		.format = DRM_FORMAT_YUYV,
 		.input_planes = 1,
 		.output_planes = 2,
-		.texture_type = EGL_TEXTURE_Y_XUXV_WL,
+		.texture_type = TEXTURE_Y_XUXV_WL,
 		{{
 			.width_divisor = 1,
 			.height_divisor = 1,
@@ -2036,7 +2054,7 @@ struct yuv_format_descriptor yuv_formats[] = {
 		.format = DRM_FORMAT_NV12,
 		.input_planes = 2,
 		.output_planes = 2,
-		.texture_type = EGL_TEXTURE_Y_UV_WL,
+		.texture_type = TEXTURE_Y_UV_WL,
 		{{
 			.width_divisor = 1,
 			.height_divisor = 1,
@@ -2052,7 +2070,7 @@ struct yuv_format_descriptor yuv_formats[] = {
 		.format = DRM_FORMAT_YUV420,
 		.input_planes = 3,
 		.output_planes = 3,
-		.texture_type = EGL_TEXTURE_Y_U_V_WL,
+		.texture_type = TEXTURE_Y_U_V_WL,
 		{{
 			.width_divisor = 1,
 			.height_divisor = 1,
@@ -2073,7 +2091,7 @@ struct yuv_format_descriptor yuv_formats[] = {
 		.format = DRM_FORMAT_YUV444,
 		.input_planes = 3,
 		.output_planes = 3,
-		.texture_type = EGL_TEXTURE_Y_U_V_WL,
+		.texture_type = TEXTURE_Y_U_V_WL,
 		{{
 			.width_divisor = 1,
 			.height_divisor = 1,
@@ -2089,6 +2107,17 @@ struct yuv_format_descriptor yuv_formats[] = {
 			.height_divisor = 1,
 			.format = DRM_FORMAT_R8,
 			.plane_index = 2
+		}}
+	}, {
+		.format = DRM_FORMAT_XYUV8888,
+		.input_planes = 1,
+		.output_planes = 1,
+		.texture_type = TEXTURE_XYUV_WL,
+		{{
+			.width_divisor = 1,
+			.height_divisor = 1,
+			.format = DRM_FORMAT_XBGR8888,
+			.plane_index = 0
 		}}
 	}
 };
@@ -2171,14 +2200,17 @@ import_yuv_dmabuf(struct gl_renderer *gr,
 	image->num_images = format->output_planes;
 
 	switch (format->texture_type) {
-	case EGL_TEXTURE_Y_XUXV_WL:
+	case TEXTURE_Y_XUXV_WL:
 		image->shader = &gr->texture_shader_y_xuxv;
 		break;
-	case EGL_TEXTURE_Y_UV_WL:
+	case TEXTURE_Y_UV_WL:
 		image->shader = &gr->texture_shader_y_uv;
 		break;
-	case EGL_TEXTURE_Y_U_V_WL:
+	case TEXTURE_Y_U_V_WL:
 		image->shader = &gr->texture_shader_y_u_v;
+		break;
+	case TEXTURE_XYUV_WL:
+		image->shader = &gr->texture_shader_xyuv;
 		break;
 	default:
 		assert(false);
@@ -2199,6 +2231,7 @@ choose_texture_target(struct dmabuf_attributes *attributes)
 	case DRM_FORMAT_UYVY:
 	case DRM_FORMAT_VYUY:
 	case DRM_FORMAT_AYUV:
+	case DRM_FORMAT_XYUV8888:
 		return GL_TEXTURE_EXTERNAL_OES;
 	default:
 		return GL_TEXTURE_2D;
@@ -2253,6 +2286,7 @@ gl_renderer_query_dmabuf_formats(struct weston_compositor *wc,
 		DRM_FORMAT_NV12,
 		DRM_FORMAT_YUV420,
 		DRM_FORMAT_YUV444,
+		DRM_FORMAT_XYUV8888,
 	};
 	bool fallback = false;
 	EGLint num;
@@ -2426,6 +2460,13 @@ gl_renderer_attach_dmabuf(struct weston_surface *surface,
 		egl_image_unref(gs->images[i]);
 	gs->num_images = 0;
 
+	gs->pitch = buffer->width;
+	gs->height = buffer->height;
+	gs->buffer_type = BUFFER_TYPE_EGL;
+	gs->y_inverted = buffer->y_inverted;
+	gs->direct_display = dmabuf->direct_display;
+	surface->is_opaque = dmabuf_is_opaque(dmabuf);
+
 	/*
 	 * We try to always hold an imported EGLImage from the dmabuf
 	 * to prevent the client from preventing re-imports. But, we also
@@ -2434,6 +2475,9 @@ gl_renderer_attach_dmabuf(struct weston_surface *surface,
 	 *
 	 * Here we release the cache reference which has to be final.
 	 */
+	if (dmabuf->direct_display)
+		return;
+
 	image = linux_dmabuf_buffer_get_user_data(dmabuf);
 
 	/* The dmabuf_image should have been created during the import */
@@ -2462,11 +2506,6 @@ gl_renderer_attach_dmabuf(struct weston_surface *surface,
 	}
 
 	gs->shader = image->shader;
-	gs->pitch = buffer->width;
-	gs->height = buffer->height;
-	gs->buffer_type = BUFFER_TYPE_EGL;
-	gs->y_inverted = buffer->y_inverted;
-	surface->is_opaque = dmabuf_is_opaque(dmabuf);
 }
 
 static void
@@ -2494,6 +2533,7 @@ gl_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 		gs->num_textures = 0;
 		gs->buffer_type = BUFFER_TYPE_NULL;
 		gs->y_inverted = true;
+		gs->direct_display = false;
 		es->is_opaque = false;
 		return;
 	}
@@ -2752,6 +2792,7 @@ gl_renderer_create_surface(struct weston_surface *surface)
 	 */
 	gs->pitch = 1;
 	gs->y_inverted = true;
+	gs->direct_display = false;
 
 	gs->surface = surface;
 
@@ -2875,6 +2916,18 @@ static const char texture_fragment_shader_y_xuxv[] =
 	FRAGMENT_CONVERT_YUV
 	;
 
+static const char texture_fragment_shader_xyuv[] =
+	"precision mediump float;\n"
+	"uniform sampler2D tex;\n"
+	"varying vec2 v_texcoord;\n"
+	"uniform float alpha;\n"
+	"void main() {\n"
+	"  float y = 1.16438356 * (texture2D(tex, v_texcoord).b - 0.0625);\n"
+	"  float u = texture2D(tex, v_texcoord).g - 0.5;\n"
+	"  float v = texture2D(tex, v_texcoord).r - 0.5;\n"
+	FRAGMENT_CONVERT_YUV
+	;
+
 static const char solid_fragment_shader[] =
 	"precision mediump float;\n"
 	"uniform vec4 color;\n"
@@ -2915,6 +2968,8 @@ shader_init(struct gl_shader *shader, struct gl_renderer *renderer,
 
 	shader->vertex_shader =
 		compile_shader(GL_VERTEX_SHADER, 1, &vertex_source);
+	if (shader->vertex_shader == GL_NONE)
+		return -1;
 
 	if (renderer->fragment_shader_debug) {
 		sources[0] = fragment_source;
@@ -2929,6 +2984,8 @@ shader_init(struct gl_shader *shader, struct gl_renderer *renderer,
 
 	shader->fragment_shader =
 		compile_shader(GL_FRAGMENT_SHADER, count, sources);
+	if (shader->fragment_shader == GL_NONE)
+		return -1;
 
 	shader->program = glCreateProgram();
 	glAttachShader(shader->program, shader->vertex_shader);
@@ -2966,8 +3023,8 @@ shader_release(struct gl_shader *shader)
 	shader->program = 0;
 }
 
-static void
-log_extensions(const char *name, const char *extensions)
+void
+gl_renderer_log_extensions(const char *name, const char *extensions)
 {
 	const char *p, *end;
 	int l;
@@ -3004,7 +3061,7 @@ log_egl_info(EGLDisplay egldpy)
 	weston_log("EGL client APIs: %s\n", str ? str : "(null)");
 
 	str = eglQueryString(egldpy, EGL_EXTENSIONS);
-	log_extensions("EGL extensions", str ? str : "(null)");
+	gl_renderer_log_extensions("EGL extensions", str ? str : "(null)");
 }
 
 static void
@@ -3025,7 +3082,7 @@ log_gl_info(void)
 	weston_log("GL renderer: %s\n", str ? str : "(null)");
 
 	str = (char *)glGetString(GL_EXTENSIONS);
-	log_extensions("GL extensions", str ? str : "(null)");
+	gl_renderer_log_extensions("GL extensions", str ? str : "(null)");
 }
 
 static void
@@ -3142,6 +3199,48 @@ gl_renderer_output_window_create(struct weston_output *output,
 	return ret;
 }
 
+static int
+gl_renderer_output_pbuffer_create(struct weston_output *output,
+				  int width,
+				  int height,
+				  const uint32_t *drm_formats,
+				  unsigned drm_formats_count)
+{
+	struct gl_renderer *gr = get_renderer(output->compositor);
+	EGLConfig pbuffer_config;
+	EGLSurface egl_surface;
+	int ret;
+	EGLint pbuffer_attribs[] = {
+		EGL_WIDTH, width,
+		EGL_HEIGHT, height,
+		EGL_NONE
+	};
+
+	pbuffer_config = gl_renderer_get_egl_config(gr, EGL_PBUFFER_BIT,
+						    drm_formats,
+						    drm_formats_count);
+	if (pbuffer_config == EGL_NO_CONFIG_KHR) {
+		weston_log("failed to choose EGL config for PbufferSurface\n");
+		return -1;
+	}
+
+	log_egl_config_info(gr->egl_display, pbuffer_config);
+
+	egl_surface = eglCreatePbufferSurface(gr->egl_display, pbuffer_config,
+					      pbuffer_attribs);
+	if (egl_surface == EGL_NO_SURFACE) {
+		weston_log("failed to create egl surface\n");
+		gl_renderer_print_egl_error_state();
+		return -1;
+	}
+
+	ret = gl_renderer_output_create(output, egl_surface);
+	if (ret < 0)
+		eglDestroySurface(gr->egl_display, egl_surface);
+
+	return ret;
+}
+
 static void
 gl_renderer_output_destroy(struct weston_output *output)
 {
@@ -3231,83 +3330,6 @@ gl_renderer_destroy(struct weston_compositor *ec)
 	free(gr);
 }
 
-/** Checks whether a platform EGL client extension is supported
- *
- * \param ec The weston compositor
- * \param extension_suffix The EGL client extension suffix
- * \return 1 if supported, 0 if using fallbacks, -1 unsupported
- *
- * This function checks whether a specific platform_* extension is supported
- * by EGL.
- *
- * The extension suffix should be the suffix of the platform extension (that
- * specifies a platform argument as defined in EGL_EXT_platform_base). For
- * example, passing "foo" will check whether either "EGL_KHR_platform_foo",
- * "EGL_EXT_platform_foo", or "EGL_MESA_platform_foo" is supported.
- *
- * The return value is 1:
- *   - if the supplied EGL client extension is supported.
- * The return value is 0:
- *   - if the platform_base client extension isn't supported so will
- *     fallback to eglGetDisplay and friends.
- * The return value is -1:
- *   - if the supplied EGL client extension is not supported.
- */
-static int
-gl_renderer_supports(struct weston_compositor *ec,
-		     const char *extension_suffix)
-{
-	static const char *extensions = NULL;
-	char s[64];
-
-	if (!extensions) {
-		extensions = (const char *) eglQueryString(
-			EGL_NO_DISPLAY, EGL_EXTENSIONS);
-
-		if (!extensions)
-			return 0;
-
-		log_extensions("EGL client extensions",
-			       extensions);
-	}
-
-	if (!weston_check_egl_extension(extensions, "EGL_EXT_platform_base"))
-		return 0;
-
-	snprintf(s, sizeof s, "EGL_KHR_platform_%s", extension_suffix);
-	if (weston_check_egl_extension(extensions, s))
-		return 1;
-
-	snprintf(s, sizeof s, "EGL_EXT_platform_%s", extension_suffix);
-	if (weston_check_egl_extension(extensions, s))
-		return 1;
-
-	snprintf(s, sizeof s, "EGL_MESA_platform_%s", extension_suffix);
-	if (weston_check_egl_extension(extensions, s))
-		return 1;
-
-	/* at this point we definitely have some platform extensions but
-	 * haven't found the supplied platform, so chances are it's
-	 * not supported. */
-
-	return -1;
-}
-
-static const char *
-platform_to_extension(EGLenum platform)
-{
-	switch (platform) {
-	case EGL_PLATFORM_GBM_KHR:
-		return "gbm";
-	case EGL_PLATFORM_WAYLAND_KHR:
-		return "wayland";
-	case EGL_PLATFORM_X11_KHR:
-		return "x11";
-	default:
-		assert(0 && "bad EGL platform enum");
-	}
-}
-
 static void
 output_handle_destroy(struct wl_listener *listener, void *data)
 {
@@ -3354,23 +3376,20 @@ static int
 gl_renderer_display_create(struct weston_compositor *ec,
 			   EGLenum platform,
 			   void *native_display,
+			   EGLint egl_surface_type,
 			   const uint32_t *drm_formats,
 			   unsigned drm_formats_count)
 {
 	struct gl_renderer *gr;
-	EGLint major, minor;
-	int supports = 0;
-
-	if (platform) {
-		supports = gl_renderer_supports(
-			ec, platform_to_extension(platform));
-		if (supports < 0)
-			return -1;
-	}
 
 	gr = zalloc(sizeof *gr);
 	if (gr == NULL)
 		return -1;
+
+	gr->platform = platform;
+
+	if (gl_renderer_setup_egl_client_extensions(gr) < 0)
+		goto fail;
 
 	gr->base.read_pixels = gl_renderer_read_pixels;
 	gr->base.repaint_output = gl_renderer_repaint_output;
@@ -3381,43 +3400,9 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	gr->base.surface_get_content_size =
 		gl_renderer_surface_get_content_size;
 	gr->base.surface_copy_content = gl_renderer_surface_copy_content;
-	gr->platform = platform;
-	gr->egl_display = NULL;
 
-	/* extension_suffix is supported */
-	if (supports) {
-		if (!get_platform_display) {
-			get_platform_display = (void *) eglGetProcAddress(
-					"eglGetPlatformDisplayEXT");
-		}
-
-		/* also wrap this in the supports check because
-		 * eglGetProcAddress can return non-NULL and still not
-		 * support the feature at runtime, so ensure the
-		 * appropriate extension checks have been done. */
-		if (get_platform_display && platform) {
-			gr->egl_display = get_platform_display(platform,
-							       native_display,
-							       NULL);
-		}
-	}
-
-	if (!gr->egl_display) {
-		weston_log("warning: either no EGL_EXT_platform_base "
-			   "support or specific platform support; "
-			   "falling back to eglGetDisplay.\n");
-		gr->egl_display = eglGetDisplay(native_display);
-	}
-
-	if (gr->egl_display == EGL_NO_DISPLAY) {
-		weston_log("failed to create display\n");
+	if (gl_renderer_setup_egl_display(gr, native_display) < 0)
 		goto fail;
-	}
-
-	if (!eglInitialize(gr->egl_display, &major, &minor)) {
-		weston_log("failed to initialize display\n");
-		goto fail_with_error;
-	}
 
 	log_egl_info(gr->egl_display);
 
@@ -3427,13 +3412,11 @@ gl_renderer_display_create(struct weston_compositor *ec,
 		goto fail_with_error;
 
 	if (!gr->has_configless_context) {
-		EGLint surface_type = EGL_WINDOW_BIT;
-
 		if (!gr->has_surfaceless_context)
-			surface_type |= EGL_PBUFFER_BIT;
+			egl_surface_type |= EGL_PBUFFER_BIT;
 
 		gr->egl_config = gl_renderer_get_egl_config(gr,
-							    surface_type,
+							    egl_surface_type,
 							    drm_formats,
 							    drm_formats_count);
 		if (gr->egl_config == EGL_NO_CONFIG_KHR) {
@@ -3490,6 +3473,7 @@ fail_terminate:
 	eglTerminate(gr->egl_display);
 fail:
 	free(gr);
+	ec->renderer = NULL;
 	return -1;
 }
 
@@ -3519,6 +3503,9 @@ compile_shaders(struct weston_compositor *ec)
 	gr->texture_shader_y_xuxv.fragment_source =
 		texture_fragment_shader_y_xuxv;
 
+	gr->texture_shader_xyuv.vertex_source = vertex_shader;
+	gr->texture_shader_xyuv.fragment_source = texture_fragment_shader_xyuv;
+
 	gr->solid_shader.vertex_source = vertex_shader;
 	gr->solid_shader.fragment_source = solid_fragment_shader;
 
@@ -3542,6 +3529,7 @@ fragment_debug_binding(struct weston_keyboard *keyboard,
 	shader_release(&gr->texture_shader_y_uv);
 	shader_release(&gr->texture_shader_y_u_v);
 	shader_release(&gr->texture_shader_y_xuxv);
+	shader_release(&gr->texture_shader_xyuv);
 	shader_release(&gr->solid_shader);
 
 	/* Force use_shader() to call glUseProgram(), since we need to use
@@ -3723,6 +3711,7 @@ gl_renderer_setup(struct weston_compositor *ec, EGLSurface egl_surface)
 WL_EXPORT struct gl_renderer_interface gl_renderer_interface = {
 	.display_create = gl_renderer_display_create,
 	.output_window_create = gl_renderer_output_window_create,
+	.output_pbuffer_create = gl_renderer_output_pbuffer_create,
 	.output_destroy = gl_renderer_output_destroy,
 	.output_set_border = gl_renderer_output_set_border,
 	.create_fence_fd = gl_renderer_create_fence_fd,

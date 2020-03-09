@@ -648,7 +648,7 @@ weston_pipewire_destroy(struct wl_listener *l, void *data)
 	struct weston_pipewire *pipewire =
 		wl_container_of(l, pipewire, destroy_listener);
 
-	weston_compositor_log_scope_destroy(pipewire->debug);
+	weston_log_scope_destroy(pipewire->debug);
 	pipewire->debug = NULL;
 
 	wl_event_source_remove(pipewire->loop_source);
@@ -797,6 +797,13 @@ weston_module_init(struct weston_compositor *compositor)
 	if (!pipewire)
 		return -1;
 
+	if (!weston_compositor_add_destroy_listener_once(compositor,
+							 &pipewire->destroy_listener,
+							 weston_pipewire_destroy)) {
+		free(pipewire);
+		return 0;
+	}
+
 	pipewire->virtual_output_api = api;
 	pipewire->compositor = compositor;
 	wl_list_init(&pipewire->output_list);
@@ -815,17 +822,15 @@ weston_module_init(struct weston_compositor *compositor)
 		goto failed;
 	}
 
-	pipewire->debug = weston_compositor_add_log_scope(
-			compositor->weston_log_ctx,
-			"pipewire",
-			"Debug messages from pipewire plugin\n",
-			NULL, NULL);
+	pipewire->debug =
+		weston_compositor_add_log_scope(compositor, "pipewire",
+						"Debug messages from pipewire plugin\n",
+						NULL, NULL, NULL);
 
-	pipewire->destroy_listener.notify = weston_pipewire_destroy;
-	wl_signal_add(&compositor->destroy_signal, &pipewire->destroy_listener);
 	return 0;
 
 failed:
+	wl_list_remove(&pipewire->destroy_listener.link);
 	free(pipewire);
 	return -1;
 }

@@ -52,8 +52,19 @@ static const char *const aspect_ratio_as_string[] = {
 static enum weston_mode_aspect_ratio
 drm_to_weston_mode_aspect_ratio(uint32_t drm_mode_flags)
 {
-	return (drm_mode_flags & DRM_MODE_FLAG_PIC_AR_MASK) >>
-		DRM_MODE_FLAG_PIC_AR_BITS_POS;
+	switch (drm_mode_flags & DRM_MODE_FLAG_PIC_AR_MASK) {
+	case DRM_MODE_FLAG_PIC_AR_4_3:
+		return WESTON_MODE_PIC_AR_4_3;
+	case DRM_MODE_FLAG_PIC_AR_16_9:
+		return WESTON_MODE_PIC_AR_16_9;
+	case DRM_MODE_FLAG_PIC_AR_64_27:
+		return WESTON_MODE_PIC_AR_64_27;
+	case DRM_MODE_FLAG_PIC_AR_256_135:
+		return WESTON_MODE_PIC_AR_256_135;
+	case DRM_MODE_FLAG_PIC_AR_NONE:
+	default:
+		return WESTON_MODE_PIC_AR_NONE;
+	}
 }
 
 static const char *
@@ -674,7 +685,7 @@ static int
 drm_output_try_add_mode(struct drm_output *output, const drmModeModeInfo *info)
 {
 	struct weston_mode *base;
-	struct drm_mode *mode;
+	struct drm_mode *mode = NULL;
 	struct drm_backend *backend;
 	const drmModeModeInfo *chosen = NULL;
 
@@ -688,6 +699,7 @@ drm_output_try_add_mode(struct drm_output *output, const drmModeModeInfo *info)
 	}
 
 	if (chosen == info) {
+		assert(mode);
 		backend = to_drm_backend(output->base.compositor);
 		drm_output_destroy_mode(backend, mode);
 		chosen = NULL;

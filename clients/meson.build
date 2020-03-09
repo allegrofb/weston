@@ -14,6 +14,8 @@ srcs_toytoolkit = [
 	pointer_constraints_unstable_v1_protocol_c,
 	ivi_application_client_protocol_h,
 	ivi_application_protocol_c,
+	viewporter_client_protocol_h,
+	viewporter_protocol_c,
 ]
 deps_toytoolkit = [
 	dep_wayland_client,
@@ -56,8 +58,10 @@ simple_clients = [
 			linux_dmabuf_unstable_v1_protocol_c,
 			linux_explicit_synchronization_unstable_v1_client_protocol_h,
 			linux_explicit_synchronization_unstable_v1_protocol_c,
-			xdg_shell_unstable_v6_client_protocol_h,
-			xdg_shell_unstable_v6_protocol_c,
+			xdg_shell_client_protocol_h,
+			xdg_shell_protocol_c,
+			weston_direct_display_client_protocol_h,
+			weston_direct_display_protocol_c,
 			fullscreen_shell_unstable_v1_client_protocol_h,
 			fullscreen_shell_unstable_v1_protocol_c,
 		],
@@ -66,7 +70,8 @@ simple_clients = [
 			dep_libdrm,
 			dep_libm
 		],
-		'deps': [ 'egl', 'glesv2', 'gbm' ]
+		'deps': [ 'egl', 'glesv2', 'gbm' ],
+		'options': [ 'renderer-gl' ]
 	},
 	{
 		'name': 'dmabuf-v4l',
@@ -76,6 +81,8 @@ simple_clients = [
 			linux_dmabuf_unstable_v1_protocol_c,
 			xdg_shell_client_protocol_h,
 			xdg_shell_protocol_c,
+			weston_direct_display_client_protocol_h,
+			weston_direct_display_protocol_c,
 			fullscreen_shell_unstable_v1_client_protocol_h,
 			fullscreen_shell_unstable_v1_protocol_c,
 		],
@@ -91,7 +98,8 @@ simple_clients = [
 			ivi_application_protocol_c,
 		],
 		'dep_objs': [ dep_wayland_client, dep_libshared, dep_libm ],
-		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ]
+		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ],
+		'options': [ 'renderer-gl' ]
 	},
 	# weston-simple-im is handled specially separately due to install_dir and odd window.h usage
 	{
@@ -128,6 +136,12 @@ foreach t : simple_clients
 				error('@0@ requires @1@ which was not found. If you rather not build this, drop "@2@" from simple-clients option.'.format(t_name, depname, t.get('name')))
 			endif
 			t_deps += dep
+		endforeach
+
+		foreach optname : t.get('options', [])
+			if not get_option(optname)
+				error('@0@ requires option @1@ which is not enabled. If you rather not build this, drop "@2@" from simple-clients option.'.format(t_name, optname, t.get('name')))
+			endif
 		endforeach
 
 		executable(
@@ -258,6 +272,8 @@ demo_clients = [
 		'add_sources': [
 			presentation_time_client_protocol_h,
 			presentation_time_protocol_c,
+			xdg_shell_client_protocol_h,
+			xdg_shell_protocol_c,
 		]
 	},
 	{ 'basename': 'resizor' },
@@ -297,49 +313,6 @@ if get_option('demo-clients')
 			install: true
 		)
 	endforeach
-endif
-
-simple_dmabuf_drm_opts = get_option('simple-dmabuf-drm')
-simple_dmabuf_drm_deps = []
-foreach driver : [ 'etnaviv', 'intel', 'freedreno' ]
-	if simple_dmabuf_drm_opts.contains(driver)
-		required = true
-		enabled = true
-	elif simple_dmabuf_drm_opts.contains('auto')
-		required = get_option('auto_features').enabled()
-		enabled = not get_option('auto_features').disabled()
-	else
-		enabled = false
-	endif
-
-	if enabled
-		dep = dependency('libdrm_' + driver, required: false)
-		if dep.found()
-			simple_dmabuf_drm_deps += dep
-			config_h.set('HAVE_LIBDRM_' + driver.to_upper(), 1)
-		elif required
-			error('simple-dmabuf-drm is configured to use @0@ but it was not found. Or, you can remove @1@ from \'-Dsimple-dmabuf-drm\' list.'.format('libdrm_' + driver, driver))
-		endif
-	endif
-endforeach
-if simple_dmabuf_drm_deps.length() > 0
-	executable(
-		'weston-simple-dmabuf-drm',
-		'simple-dmabuf-drm.c',
-		xdg_shell_client_protocol_h,
-		xdg_shell_protocol_c,
-		fullscreen_shell_unstable_v1_client_protocol_h,
-		fullscreen_shell_unstable_v1_protocol_c,
-		linux_dmabuf_unstable_v1_client_protocol_h,
-		linux_dmabuf_unstable_v1_protocol_c,
-		include_directories: common_inc,
-		dependencies: [
-			dep_wayland_client,
-			dep_libdrm,
-			simple_dmabuf_drm_deps
-		],
-		install: true
-	)
 endif
 
 if get_option('shell-desktop')
