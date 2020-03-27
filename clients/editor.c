@@ -797,7 +797,7 @@ text_entry_activate(struct text_entry *entry,
 		entry->panel_visible = !entry->panel_visible;
 
 		if (entry->panel_visible)
-			zwp_text_input_v1_show_input_panel(entry->text_input);
+			zwp_text_input_v1_show_input_panel(entry->text_input);    //hyjiang, text-input protocol
 		else
 			zwp_text_input_v1_hide_input_panel(entry->text_input);
 

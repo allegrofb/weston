@@ -1447,7 +1447,7 @@ weston_desktop_xdg_shell_protocol_pong(struct wl_client *wl_client,
 	weston_desktop_client_pong(client, serial);
 }
 
-static const struct xdg_wm_base_interface weston_desktop_xdg_shell_implementation = {
+static const struct xdg_wm_base_interface weston_desktop_xdg_shell_implementation = {   //hyjiang, xdg_wm_base interface implement
 	.destroy = weston_desktop_destroy_request,
 	.create_positioner = weston_desktop_xdg_shell_protocol_create_positioner,
 	.get_xdg_surface = weston_desktop_xdg_shell_protocol_get_xdg_surface,

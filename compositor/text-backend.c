@@ -1049,7 +1049,7 @@ text_backend_configuration(struct text_backend *text_backend)
 
 	section = weston_config_get_section(config,
 					    "input-method", NULL, NULL);
-	client = wet_get_libexec_path("weston-keyboard");
+	client = wet_get_libexec_path("weston-keyboard");    //hyjiang, get input-method client
 	weston_config_section_get_string(section, "path",
 					 &text_backend->input_method.path,
 					 client);
@@ -1072,7 +1072,7 @@ text_backend_destroy(struct text_backend *text_backend)
 }
 
 WL_EXPORT struct text_backend *
-text_backend_init(struct weston_compositor *ec)
+text_backend_init(struct weston_compositor *ec)                        //hyjiang ???
 {
 	struct text_backend *text_backend;
 	struct weston_seat *seat;
@@ -1093,7 +1093,7 @@ text_backend_init(struct weston_compositor *ec)
 
 	text_input_manager_create(ec);
 
-	launch_input_method(text_backend);
+	launch_input_method(text_backend);        //hyjiang, launch input method
 
 	return text_backend;
 }

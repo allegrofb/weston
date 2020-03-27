@@ -387,7 +387,7 @@ input_panel_destroy(struct desktop_shell *shell)
 }
 
 int
-input_panel_setup(struct desktop_shell *shell)
+input_panel_setup(struct desktop_shell *shell)                       //hyjiang, input panel setup
 {
 	struct weston_compositor *ec = shell->compositor;
 

@@ -49,7 +49,7 @@
 #include <libweston/zalloc.h>
 #include "shared/file-util.h"
 
-#include "weston-desktop-shell-client-protocol.h"
+#include "weston-desktop-shell-client-protocol.h"      //hyjiang, desktop-shell.so implement this protocol
 
 #define DEFAULT_CLOCK_FORMAT CLOCK_FORMAT_MINUTES
 #define DEFAULT_SPACING 10
@@ -70,7 +70,7 @@ struct desktop {
 	struct wl_list outputs;
 
 	int want_panel;
-	enum weston_desktop_shell_panel_position panel_position;
+	enum weston_desktop_shell_panel_position panel_position;   //hyjiang, weston-desktop-shell protocol
 	enum clock_format clock_format;
 
 	struct window *grab_window;
@@ -103,7 +103,7 @@ struct panel {
 	struct wl_list launcher_list;
 	struct panel_clock *clock;
 	int painted;
-	enum weston_desktop_shell_panel_position panel_position;
+	enum weston_desktop_shell_panel_position panel_position;   //hyjiang, weston-desktop-shell protocol
 	enum clock_format clock_format;
 	uint32_t color;
 };
@@ -201,7 +201,7 @@ check_desktop_ready(struct window *window)
 	if (!desktop->painted && is_desktop_painted(desktop)) {
 		desktop->painted = 1;
 
-		weston_desktop_shell_desktop_ready(desktop->shell);
+		weston_desktop_shell_desktop_ready(desktop->shell);  //hyjiang, weston-desktop-shell protocol
 	}
 }
 
@@ -1009,7 +1009,7 @@ unlock_dialog_create(struct desktop *desktop)
 				      unlock_dialog_touch_up_handler);
 
 	surface = window_get_wl_surface(dialog->window);
-	weston_desktop_shell_set_lock_surface(desktop->shell, surface);
+	weston_desktop_shell_set_lock_surface(desktop->shell, surface);  //hyjiang, weston-desktop-shell protocol
 
 	window_schedule_resize(dialog->window, 260, 230);
 
@@ -1029,7 +1029,7 @@ unlock_dialog_finish(struct task *task, uint32_t events)
 	struct desktop *desktop =
 		container_of(task, struct desktop, unlock_task);
 
-	weston_desktop_shell_unlock(desktop->shell);
+	weston_desktop_shell_unlock(desktop->shell);       //hyjiang, weston-desktop-shell protocol
 	unlock_dialog_destroy(desktop->unlock_dialog);
 	desktop->unlock_dialog = NULL;
 }
@@ -1054,7 +1054,7 @@ desktop_shell_prepare_lock_surface(void *data,
 	struct desktop *desktop = data;
 
 	if (!desktop->locking) {
-		weston_desktop_shell_unlock(desktop->shell);
+		weston_desktop_shell_unlock(desktop->shell);   //hyjiang, weston-desktop-shell protocol
 		return;
 	}
 
@@ -1111,7 +1111,7 @@ desktop_shell_grab_cursor(void *data,
 	}
 }
 
-static const struct weston_desktop_shell_listener listener = {
+static const struct weston_desktop_shell_listener listener = {    //hyjiang, weston-desktop-shell protocol
 	desktop_shell_configure,
 	desktop_shell_prepare_lock_surface,
 	desktop_shell_grab_cursor
@@ -1301,13 +1301,13 @@ output_init(struct output *output, struct desktop *desktop)
 	if (desktop->want_panel) {
 		output->panel = panel_create(desktop, output);
 		surface = window_get_wl_surface(output->panel->window);
-		weston_desktop_shell_set_panel(desktop->shell,
+		weston_desktop_shell_set_panel(desktop->shell,    //hyjiang, weston-desktop-shell protocol
 					       output->output, surface);
 	}
 
 	output->background = background_create(desktop, output);
 	surface = window_get_wl_surface(output->background->window);
-	weston_desktop_shell_set_background(desktop->shell,
+	weston_desktop_shell_set_background(desktop->shell,    //hyjiang, weston-desktop-shell protocol
 					    output->output, surface);
 }
 
@@ -1397,7 +1397,7 @@ global_handler(struct display *display, uint32_t id,
 	if (!strcmp(interface, "weston_desktop_shell")) {
 		desktop->shell = display_bind(desktop->display,
 					      id,
-					      &weston_desktop_shell_interface,
+					      &weston_desktop_shell_interface,       //hyjiang, weston-desktop-shell protocol
 					      1);
 		weston_desktop_shell_add_listener(desktop->shell,
 						  &listener,
@@ -1536,7 +1536,7 @@ int main(int argc, char *argv[])
 	/* Create panel and background for outputs processed before the shell
 	 * global interface was processed */
 	if (desktop.want_panel)
-		weston_desktop_shell_set_panel_position(desktop.shell, desktop.panel_position);
+		weston_desktop_shell_set_panel_position(desktop.shell, desktop.panel_position);  //hyjiang, weston-desktop-shell protocol
 	wl_list_for_each(output, &desktop.outputs, link)
 		if (!output->panel)
 			output_init(output, &desktop);
@@ -1545,14 +1545,14 @@ int main(int argc, char *argv[])
 
 	signal(SIGCHLD, sigchild_handler);
 
-	display_run(desktop.display);
+	display_run(desktop.display);        //hyjiang, while loop until quit
 
 	/* Cleanup */
 	grab_surface_destroy(&desktop);
 	desktop_destroy_outputs(&desktop);
 	if (desktop.unlock_dialog)
 		unlock_dialog_destroy(desktop.unlock_dialog);
-	weston_desktop_shell_destroy(desktop.shell);
+	weston_desktop_shell_destroy(desktop.shell);    //hyjiang, weston-desktop-shell protocol
 	display_destroy(desktop.display);
 
 	return 0;

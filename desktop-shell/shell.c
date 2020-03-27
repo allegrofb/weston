@@ -3335,7 +3335,7 @@ desktop_shell_set_panel_position(struct wl_client *client,
 	shell->panel_position = position;
 }
 
-static const struct weston_desktop_shell_interface desktop_shell_implementation = {
+static const struct weston_desktop_shell_interface desktop_shell_implementation = {    //hyjiang, weston-desktop-shell protocol server
 	desktop_shell_set_background,
 	desktop_shell_set_panel,
 	desktop_shell_set_lock_surface,
@@ -4454,12 +4454,12 @@ bind_desktop_shell(struct wl_client *client,
 	struct desktop_shell *shell = data;
 	struct wl_resource *resource;
 
-	resource = wl_resource_create(client, &weston_desktop_shell_interface,
+	resource = wl_resource_create(client, &weston_desktop_shell_interface,   //hyjiang, weston-desktop-shell protocol server
 				      1, id);
 
 	if (client == shell->child.client) {
 		wl_resource_set_implementation(resource,
-					       &desktop_shell_implementation,
+					       &desktop_shell_implementation,      //hyjiang, weston-desktop-shell protocol server
 					       shell, unbind_desktop_shell);
 		shell->child.desktop_shell = resource;
 		return;
@@ -5133,7 +5133,7 @@ handle_seat_created(struct wl_listener *listener, void *data)
 }
 
 WL_EXPORT int
-wet_shell_init(struct weston_compositor *ec,
+wet_shell_init(struct weston_compositor *ec,                   //hyjiang, weston-desktop-shell
 	       int *argc, char *argv[])
 {
 	struct weston_seat *seat;
@@ -5178,7 +5178,7 @@ wet_shell_init(struct weston_compositor *ec,
 	wl_array_init(&shell->workspaces.array);
 	wl_list_init(&shell->workspaces.client_list);
 
-	if (input_panel_setup(shell) < 0)
+	if (input_panel_setup(shell) < 0)                             //hyjiang, input panel setup
 		return -1;
 
 	shell->text_backend = text_backend_init(ec);
@@ -5212,7 +5212,7 @@ wet_shell_init(struct weston_compositor *ec,
 		return -1;
 
 	if (wl_global_create(ec->wl_display,
-			     &weston_desktop_shell_interface, 1,
+			     &weston_desktop_shell_interface, 1,                         //hyjiang, weston-desktop-shell protocol server
 			     shell, bind_desktop_shell) == NULL)
 		return -1;
 

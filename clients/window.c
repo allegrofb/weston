@@ -74,7 +74,7 @@ typedef void *EGLContext;
 #include "shared/helpers.h"
 #include "shared/xalloc.h"
 #include <libweston/zalloc.h>
-#include "xdg-shell-client-protocol.h"
+#include "xdg-shell-client-protocol.h"                            //hyjiang, xdg-shell protocol
 #include "text-cursor-position-client-protocol.h"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "relative-pointer-unstable-v1-client-protocol.h"
@@ -3153,7 +3153,7 @@ process_key_press(xkb_keysym_t sym, struct input *input)
 }
 
 static void
-keyboard_handle_key(void *data, struct wl_keyboard *keyboard,
+keyboard_handle_key(void *data, struct wl_keyboard *keyboard,     //hyjiang, keyboard handler
 		    uint32_t serial, uint32_t time, uint32_t key,
 		    uint32_t state_w)
 {
@@ -3200,7 +3200,7 @@ keyboard_handle_key(void *data, struct wl_keyboard *keyboard,
 		if (state == WL_KEYBOARD_KEY_STATE_PRESSED)
 			sym = process_key_press(sym, input);
 
-		(*window->key_handler)(window, input, time, key,
+		(*window->key_handler)(window, input, time, key,     //hyjiang, key_handler callback
 				       sym, state, window->user_data);
 	}
 
@@ -3484,7 +3484,7 @@ seat_handle_capabilities(void *data, struct wl_seat *seat,
 	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !input->keyboard) {
 		input->keyboard = wl_seat_get_keyboard(seat);
 		wl_keyboard_set_user_data(input->keyboard, input);
-		wl_keyboard_add_listener(input->keyboard, &keyboard_listener,
+		wl_keyboard_add_listener(input->keyboard, &keyboard_listener,     //hyjiang, setup keyboard listener
 					 input);
 	} else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && input->keyboard) {
 		if (input->seat_version >= WL_KEYBOARD_RELEASE_SINCE_VERSION)
@@ -3514,8 +3514,8 @@ seat_handle_name(void *data, struct wl_seat *seat,
 
 }
 
-static const struct wl_seat_listener seat_listener = {
-	seat_handle_capabilities,
+static const struct wl_seat_listener seat_listener = {      //hyjiang
+	seat_handle_capabilities,                               //hyjiang, setup wl_keyboard_listener      
 	seat_handle_name
 };
 
@@ -5213,9 +5213,9 @@ surface_create(struct window *window)
 
 	surface = xzalloc(sizeof *surface);
 	surface->window = window;
-	surface->surface = wl_compositor_create_surface(display->compositor);
+	surface->surface = wl_compositor_create_surface(display->compositor);   //hyjiang, wayland-client-protocol, Ask the compositor to create a new surface 
 	surface->buffer_scale = 1;
-	wl_surface_add_listener(surface->surface, &surface_listener, window);
+	wl_surface_add_listener(surface->surface, &surface_listener, window);   //hyjiang, wayland-client-protocol,
 
 	wl_list_insert(&window->subsurface_list, &surface->link);
 	surface->viewport = NULL;
@@ -5269,9 +5269,9 @@ window_create(struct display *display)
 
 	window = window_create_internal(display, 0);
 
-	if (window->display->xdg_shell) {
+	if (window->display->xdg_shell) {                //hyjiang, ????
 		window->xdg_surface =
-			xdg_wm_base_get_xdg_surface(window->display->xdg_shell,
+			xdg_wm_base_get_xdg_surface(window->display->xdg_shell,     //hyjiang, xdg-shell protocol, xdg_wm_base interface, create a shell surface from a surface
 						    window->main_surface->surface);
 		fail_on_null(window->xdg_surface, 0, __FILE__, __LINE__);
 
@@ -5887,7 +5887,7 @@ display_add_input(struct display *d, uint32_t id, int display_seat_version)
 	wl_list_init(&input->touch_point_list);
 	wl_list_insert(d->input_list.prev, &input->link);
 
-	wl_seat_add_listener(input->seat, &seat_listener, input);
+	wl_seat_add_listener(input->seat, &seat_listener, input);      //hyjiang, setup seat listener
 	wl_seat_set_user_data(input->seat, input);
 
 	if (d->data_device_manager) {
@@ -5988,7 +5988,7 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 };
 
 static void
-registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
+registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,    //hyjiang
 		       const char *interface, uint32_t version)
 {
 	struct display *d = data;
@@ -6005,7 +6005,7 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 						 &wl_compositor_interface, 3);
 	} else if (strcmp(interface, "wl_output") == 0) {
 		display_add_output(d, id);
-	} else if (strcmp(interface, "wl_seat") == 0) {
+	} else if (strcmp(interface, "wl_seat") == 0) {                        //hyjiang
 		display_add_input(d, id, version);
 	} else if (strcmp(interface, "zwp_relative_pointer_manager_v1") == 0 &&
 		   version == ZWP_RELATIVE_POINTER_MANAGER_V1_VERSION) {
@@ -6024,7 +6024,7 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 	} else if (strcmp(interface, "wl_data_device_manager") == 0) {
 		display_add_data_device(d, id, version);
 	} else if (strcmp(interface, "xdg_wm_base") == 0) {
-		d->xdg_shell = wl_registry_bind(registry, id,
+		d->xdg_shell = wl_registry_bind(registry, id,                         //hyjiang, xdg-shell protocol, in the display callback
 						&xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(d->xdg_shell, &wm_base_listener, d);
 	} else if (strcmp(interface, "text_cursor_position") == 0) {
@@ -6263,7 +6263,7 @@ display_create(int *argc, char *argv[])
 	wl_list_init(&d->global_list);
 
 	d->registry = wl_display_get_registry(d->display);
-	wl_registry_add_listener(d->registry, &registry_listener, d);
+	wl_registry_add_listener(d->registry, &registry_listener, d);   //hyjiang, wl_dislay global registry ???
 
 	if (wl_display_roundtrip(d->display) < 0) {
 		fprintf(stderr, "Failed to process Wayland connection: %s\n",
