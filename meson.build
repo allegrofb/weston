@@ -1,5 +1,5 @@
 project('weston',
-	'c',
+	'c', 'cpp',
 	version: '6.0.1',
 	default_options: [
 		'warning_level=2',
@@ -165,6 +165,7 @@ subdir('wcap')
 subdir('tests')
 subdir('data')
 subdir('man')
+subdir('keynes')
 
 configure_file(output: 'config.h', configuration: config_h)
 
